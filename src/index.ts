@@ -23,7 +23,7 @@ export default {
       return Response.redirect(url.toString());
     } else if (url.pathname === "/callback") {
       return Response.json({
-        message: "OAuth flow complete!",
+        message: "authcomplete",
         params: Object.fromEntries(url.searchParams.entries()),
       });
     }
@@ -59,7 +59,7 @@ export default {
             copy: {
               input_code: "Code (check your email)",
             },
-          }),
+          })
         ),
       },
       theme: {
@@ -72,8 +72,20 @@ export default {
         },
       },
       success: async (ctx, value) => {
-        return ctx.subject("user", {
-          id: await getOrCreateUser(env, value.email),
+        const userId = await getOrCreateUser(env, value.email);
+
+        const subjectResponse = ctx.subject("user", {
+          id: userId,
+        });
+
+        const cookie = `user_id=${userId}; Path=/; HttpOnly; Secure; SameSite=Strict; Max-Age=604800`; // 7 days
+
+        return new Response(subjectResponse.body, {
+          status: subjectResponse.status,
+          headers: {
+            ...Object.fromEntries(subjectResponse.headers.entries()),
+            "Set-Cookie": cookie,
+          },
         });
       },
     }).fetch(request, env, ctx);
