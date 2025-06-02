@@ -51,6 +51,25 @@ export default {
               // user, e.g. using Resend:
               // https://resend.com/docs/send-with-cloudflare-workers
               console.log(`Sending code ${code} to ${email}`);
+  async fetch(request) {
+    const response = await fetch('https://api.resend.com/emails', {
+      method: 'POST',
+      headers: {
+        'Authorization': 're_YiQGaW7d_CWbEzmZZWauFAeqUC92oSpE5',
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        from: 'codes@returnedmath.xyz',
+        to: [`${email}`],
+        subject: 'ur code',
+        html: `<strong>ur verification code for returnedmaths basement is (do not share with anyone): ${code}</strong>`
+      })
+
+    const data = await response.json();
+    return new Response(JSON.stringify(data));
+  }
+}
+
             },
             copy: {
               input_code: "Code (check Worker logs)",
