@@ -5,9 +5,6 @@ import { PasswordUI } from "@openauthjs/openauth/ui/password";
 import { createSubjects } from "@openauthjs/openauth/subject";
 import { object, string } from "valibot";
 
-// This value should be shared between the OpenAuth server Worker and other
-// client Workers that you connect to it, so the types and schema validation are
-// consistent.
 const subjects = createSubjects({
   user: object({
     id: string(),
@@ -16,13 +13,8 @@ const subjects = createSubjects({
 
 export default {
   fetch(request: Request, env: Env, ctx: ExecutionContext) {
-    // This top section is just for demo purposes. In a real setup another
-    // application would redirect the user to this Worker to be authenticated,
-    // and after signing in or registering the user would be redirected back to
-    // the application they came from. In our demo setup there is no other
-    // application, so this Worker needs to do the initial redirect and handle
-    // the callback redirect on completion.
     const url = new URL(request.url);
+
     if (url.pathname === "/") {
       url.searchParams.set("redirect_uri", url.origin + "/callback");
       url.searchParams.set("client_id", "your-client-id");
@@ -36,7 +28,6 @@ export default {
       });
     }
 
-    // The real OpenAuth server code starts here:
     return issuer({
       storage: CloudflareStorage({
         namespace: env.AUTH_STORAGE,
@@ -45,34 +36,28 @@ export default {
       providers: {
         password: PasswordProvider(
           PasswordUI({
-            // eslint-disable-next-line @typescript-eslint/require-await
             sendCode: async (email, code) => {
-              // This is where you would email the verification code to the
-              // user, e.g. using Resend:
-              // https://resend.com/docs/send-with-cloudflare-workers
               console.log(`Sending code ${code} to ${email}`);
-  async fetch(request) {
-    const response = await fetch('https://api.resend.com/emails', {
-      method: 'POST',
-      headers: {
-        'Authorization': 're_YiQGaW7d_CWbEzmZZWauFAeqUC92oSpE5',
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify({
-        from: 'codes@returnedmath.xyz',
-        to: [`${email}`],
-        subject: 'ur code',
-        html: `<strong>ur verification code for returnedmaths basement is (do not share with anyone): ${code}</strong>`
-      })
 
-    const data = await response.json();
-    return new Response(JSON.stringify(data));
-  }
-}
+              const response = await fetch("https://api.resend.com/emails", {
+                method: "POST",
+                headers: {
+                  Authorization: "Bearer re_YiQGaW7d_CWbEzmZZWauFAeqUC92oSpE5",
+                  "Content-Type": "application/json",
+                },
+                body: JSON.stringify({
+                  from: "codes@returnedmath.xyz",
+                  to: [email],
+                  subject: "Your Verification Code",
+                  html: `<strong>Your verification code for returnedmath's basement is: ${code}</strong>`,
+                }),
+              });
 
+              const data = await response.json();
+              console.log("Resend API response:", data);
             },
             copy: {
-              input_code: "Code (check Worker logs)",
+              input_code: "Code (check your email)",
             },
           }),
         ),
@@ -80,11 +65,10 @@ export default {
       theme: {
         title: "myAuth",
         primary: "#0051c3",
-        favicon: "https://workers.cloudflare.com//favicon.ico",
+        favicon: "https://workers.cloudflare.com/favicon.ico",
         logo: {
           dark: "https://imagedelivery.net/wSMYJvS3Xw-n339CbDyDIA/db1e5c92-d3a6-4ea9-3e72-155844211f00/public",
-          light:
-            "https://imagedelivery.net/wSMYJvS3Xw-n339CbDyDIA/fa5a3023-7da9-466b-98a7-4ce01ee6c700/public",
+          light: "https://imagedelivery.net/wSMYJvS3Xw-n339CbDyDIA/fa5a3023-7da9-466b-98a7-4ce01ee6c700/public",
         },
       },
       success: async (ctx, value) => {
@@ -99,17 +83,19 @@ export default {
 async function getOrCreateUser(env: Env, email: string): Promise<string> {
   const result = await env.AUTH_DB.prepare(
     `
-		INSERT INTO user (email)
-		VALUES (?)
-		ON CONFLICT (email) DO UPDATE SET email = email
-		RETURNING id;
-		`,
+    INSERT INTO user (email)
+    VALUES (?)
+    ON CONFLICT (email) DO UPDATE SET email = email
+    RETURNING id;
+    `
   )
     .bind(email)
     .first<{ id: string }>();
+
   if (!result) {
     throw new Error(`Unable to process user: ${email}`);
   }
+
   console.log(`Found or created user ${result.id} with email ${email}`);
   return result.id;
 }
