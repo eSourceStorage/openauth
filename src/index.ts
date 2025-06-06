@@ -15,8 +15,9 @@ export default {
   fetch(request: Request, env: Env, ctx: ExecutionContext) {
     const url = new URL(request.url);
 
+    // Update redirect URI with https
     if (url.pathname === "/") {
-      url.searchParams.set("redirect_uri", "returnedmath.xyz/auth-callback");
+      url.searchParams.set("redirect_uri", "https://returnedmath.xyz/auth-callback");
       url.searchParams.set("client_id", "your-client-id");
       url.searchParams.set("response_type", "code");
       url.pathname = "/authorize";
@@ -62,6 +63,16 @@ export default {
           })
         ),
       },
+      cors: {
+        origins: ["https://returnedmath.xyz"],
+        credentials: true
+      },
+      domain: "auth.returnedmath.xyz",
+      cookies: {
+        domain: ".returnedmath.xyz",
+        secure: true,
+        sameSite: "strict"
+      },
       theme: {
         title: "myAuth",
         primary: "#0051c3",
@@ -78,7 +89,7 @@ export default {
           id: userId,
         });
 
-        const cookie = `user_id=${userId}; Path=/; HttpOnly; Secure; SameSite=Strict; Max-Age=604800`; // 7 days
+        const cookie = `user_id=${userId}; Domain=.returnedmath.xyz; Path=/; HttpOnly; Secure; SameSite=Strict; Max-Age=604800`; // 7 days
 
         return new Response(subjectResponse.body, {
           status: subjectResponse.status,
