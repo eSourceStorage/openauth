@@ -122,21 +122,22 @@ export default {
       },
       success: async (ctx, value) => {
         try {
-          console.log("Processing successful auth for email:", value.email);
+          console.log("Processing auth for email:", value.email);
           
-          // Create temporary user if DB fails
+          // Try to find existing user first
+          const existingUser = await findUser(env, value.email);
+          
           let userId;
-          try {
-            userId = await getOrCreateUser(env, value.email);
-          } catch (dbErr) {
-            console.error("DB Error:", dbErr);
-            userId = `temp-${Date.now()}`;
+          if (existingUser) {
+            userId = existingUser.id;
+            console.log("Found existing user:", userId);
+          } else {
+            // Only create if user doesn't exist
+            userId = await createUser(env, value.email);
+            console.log("Created new user:", userId);
           }
 
           const subjectResponse = ctx.subject("user", { id: userId });
-          
-          // Log response for debugging
-          console.log("Auth success response:", subjectResponse);
 
           return new Response(subjectResponse.body, {
             status: 200,
@@ -148,40 +149,37 @@ export default {
             }
           });
         } catch (err) {
-          console.error("Auth success handler error:", err);
+          console.error("Auth error:", err);
           return new Response(JSON.stringify({
             error: "auth_error",
-            description: "Authentication succeeded but user creation failed"
-          }), { 
-            status: 500,
-            headers: {
-              "Content-Type": "application/json",
-              "Access-Control-Allow-Origin": "https://returnedmath.xyz",
-              "Access-Control-Allow-Credentials": "true"
-            }
-          });
+            description: "Failed to authenticate user"
+          }), { status: 401 });
         }
-      },
+      }
     }).fetch(request, env, ctx);
-  },
-} satisfies ExportedHandler<Env>;
+  }
+};
 
-async function getOrCreateUser(env: Env, email: string): Promise<string> {
+async function findUser(env: Env, email: string) {
   const result = await env.AUTH_DB.prepare(
-    `
-    INSERT INTO user (email)
-    VALUES (?)
-    ON CONFLICT (email) DO UPDATE SET email = email
-    RETURNING id;
-    `
+    `SELECT id, email FROM user WHERE email = ?`
+  )
+    .bind(email)
+    .first<{ id: string; email: string }>();
+  
+  return result || null;
+}
+
+async function createUser(env: Env, email: string): Promise<string> {
+  const result = await env.AUTH_DB.prepare(
+    `INSERT INTO user (email) VALUES (?) RETURNING id`
   )
     .bind(email)
     .first<{ id: string }>();
 
   if (!result) {
-    throw new Error(`Unable to process user: ${email}`);
+    throw new Error("Failed to create user");
   }
 
-  console.log(`Found or created user ${result.id} with email ${email}`);
   return result.id;
 }
