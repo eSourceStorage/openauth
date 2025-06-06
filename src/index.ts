@@ -18,8 +18,7 @@ export default {
     // Handle the callback separately
     if (url.pathname === "/callback") {
       try {
-        const body = await request.json();
-        const code = body.code;
+        const code = url.searchParams.get('code');
         
         if (!code) {
           throw new Error("No auth code provided");
@@ -30,10 +29,7 @@ export default {
 
         return new Response(JSON.stringify({
           message: "authcomplete",
-          user: {
-            id: "temp-user-id", // This will be replaced by actual user ID
-            email: body.email || "user@example.com"
-          }
+          user: { id: code } // Just use the auth code as temp ID
         }), {
           headers: {
             "Content-Type": "application/json",
@@ -121,65 +117,18 @@ export default {
         },
       },
       success: async (ctx, value) => {
-        try {
-          console.log("Processing auth for email:", value.email);
-          
-          // Try to find existing user first
-          const existingUser = await findUser(env, value.email);
-          
-          let userId;
-          if (existingUser) {
-            userId = existingUser.id;
-            console.log("Found existing user:", userId);
-          } else {
-            // Only create if user doesn't exist
-            userId = await createUser(env, value.email);
-            console.log("Created new user:", userId);
+        const subjectResponse = ctx.subject("user", { id: value.email });
+
+        return new Response(subjectResponse.body, {
+          status: 200,
+          headers: {
+            ...Object.fromEntries(subjectResponse.headers.entries()),
+            "Set-Cookie": `user_id=${value.email}; Domain=.returnedmath.xyz; Path=/; HttpOnly; Secure; SameSite=Strict; Max-Age=604800`,
+            "Access-Control-Allow-Origin": "https://returnedmath.xyz",
+            "Access-Control-Allow-Credentials": "true"
           }
-
-          const subjectResponse = ctx.subject("user", { id: userId });
-
-          return new Response(subjectResponse.body, {
-            status: 200,
-            headers: {
-              ...Object.fromEntries(subjectResponse.headers.entries()),
-              "Set-Cookie": `user_id=${userId}; Domain=.returnedmath.xyz; Path=/; HttpOnly; Secure; SameSite=Strict; Max-Age=604800`,
-              "Access-Control-Allow-Origin": "https://returnedmath.xyz",
-              "Access-Control-Allow-Credentials": "true"
-            }
-          });
-        } catch (err) {
-          console.error("Auth error:", err);
-          return new Response(JSON.stringify({
-            error: "auth_error",
-            description: "Failed to authenticate user"
-          }), { status: 401 });
-        }
+        });
       }
     }).fetch(request, env, ctx);
   }
 };
-
-async function findUser(env: Env, email: string) {
-  const result = await env.AUTH_DB.prepare(
-    `SELECT id, email FROM user WHERE email = ?`
-  )
-    .bind(email)
-    .first<{ id: string; email: string }>();
-  
-  return result || null;
-}
-
-async function createUser(env: Env, email: string): Promise<string> {
-  const result = await env.AUTH_DB.prepare(
-    `INSERT INTO user (email) VALUES (?) RETURNING id`
-  )
-    .bind(email)
-    .first<{ id: string }>();
-
-  if (!result) {
-    throw new Error("Failed to create user");
-  }
-
-  return result.id;
-}
