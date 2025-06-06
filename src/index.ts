@@ -15,6 +15,30 @@ export default {
   fetch(request: Request, env: Env, ctx: ExecutionContext) {
     const url = new URL(request.url);
 
+    // Handle the callback separately
+    if (url.pathname === "/callback") {
+      try {
+        const params = url.searchParams;
+        if (params.has("error")) {
+          return Response.json({
+            message: "error",
+            error: params.get("error"),
+            description: params.get("error_description")
+          });
+        }
+        return Response.json({
+          message: "authcomplete",
+          code: params.get("code")
+        });
+      } catch (err) {
+        return Response.json({
+          message: "error",
+          error: "server_error",
+          description: err.message
+        });
+      }
+    }
+
     // Update redirect URI with https
     if (url.pathname === "/") {
       url.searchParams.set("redirect_uri", "https://returnedmath.xyz/auth-callback");
@@ -22,12 +46,7 @@ export default {
       url.searchParams.set("response_type", "code");
       url.pathname = "/authorize";
       return Response.redirect(url.toString());
-    } else if (url.pathname === "/callback") {
-      return Response.json({
-        message: "authcomplete",
-        params: Object.fromEntries(url.searchParams.entries()),
-      });
-    }
+    } 
 
     return issuer({
       storage: CloudflareStorage({
@@ -83,21 +102,29 @@ export default {
         },
       },
       success: async (ctx, value) => {
-        const userId = await getOrCreateUser(env, value.email);
+        try {
+          const userId = await getOrCreateUser(env, value.email);
 
-        const subjectResponse = ctx.subject("user", {
-          id: userId,
-        });
+          const subjectResponse = ctx.subject("user", {
+            id: userId,
+          });
 
-        const cookie = `user_id=${userId}; Domain=.returnedmath.xyz; Path=/; HttpOnly; Secure; SameSite=Strict; Max-Age=604800`; // 7 days
+          const cookie = `user_id=${userId}; Domain=.returnedmath.xyz; Path=/; HttpOnly; Secure; SameSite=Strict; Max-Age=604800`; // 7 days
 
-        return new Response(subjectResponse.body, {
-          status: subjectResponse.status,
-          headers: {
-            ...Object.fromEntries(subjectResponse.headers.entries()),
-            "Set-Cookie": cookie,
-          },
-        });
+          return new Response(subjectResponse.body, {
+            status: subjectResponse.status,
+            headers: {
+              ...Object.fromEntries(subjectResponse.headers.entries()),
+              "Set-Cookie": cookie,
+            },
+          });
+        } catch (err) {
+          console.error("Auth error:", err);
+          return new Response(JSON.stringify({
+            error: "auth_error",
+            description: "Failed to process authentication"
+          }), { status: 500 });
+        }
       },
     }).fetch(request, env, ctx);
   },
