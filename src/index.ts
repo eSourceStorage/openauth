@@ -17,41 +17,24 @@ export default {
 
     // Handle the callback separately
     if (url.pathname === "/callback") {
-      try {
-        const code = url.searchParams.get('code');
-        
-        if (!code) {
-          throw new Error("No auth code provided");
-        }
+      const code = url.searchParams.get('code');
+      const headers = {
+        "Content-Type": "application/json",
+        "Access-Control-Allow-Origin": "https://returnedmath.xyz",
+        "Access-Control-Allow-Credentials": "true"
+      };
 
-        // Log for debugging
-        console.log("Processing auth callback with code:", code);
-
+      if (!code) {
         return new Response(JSON.stringify({
-          message: "authcomplete",
-          user: { id: code } // Just use the auth code as temp ID
-        }), {
-          headers: {
-            "Content-Type": "application/json",
-            "Access-Control-Allow-Origin": "https://returnedmath.xyz",
-            "Access-Control-Allow-Credentials": "true"
-          }
-        });
-      } catch (err) {
-        console.error("Callback error:", err);
-        return new Response(JSON.stringify({
-          message: "error",
-          error: "auth_error",
-          description: err.message
-        }), { 
-          status: 400,
-          headers: {
-            "Content-Type": "application/json",
-            "Access-Control-Allow-Origin": "https://returnedmath.xyz",
-            "Access-Control-Allow-Credentials": "true"
-          }
-        });
+          error: "invalid_request",
+          error_description: "No auth code provided"
+        }), { status: 400, headers });
       }
+
+      return new Response(JSON.stringify({
+        message: "authcomplete",
+        code: code
+      }), { headers });
     }
 
     // Update redirect URI with https
@@ -117,17 +100,19 @@ export default {
         },
       },
       success: async (ctx, value) => {
-        const subjectResponse = ctx.subject("user", { id: value.email });
-
-        return new Response(subjectResponse.body, {
-          status: 200,
-          headers: {
-            ...Object.fromEntries(subjectResponse.headers.entries()),
-            "Set-Cookie": `user_id=${value.email}; Domain=.returnedmath.xyz; Path=/; HttpOnly; Secure; SameSite=Strict; Max-Age=604800`,
-            "Access-Control-Allow-Origin": "https://returnedmath.xyz",
-            "Access-Control-Allow-Credentials": "true"
-          }
+        const headers = new Headers({
+          "Content-Type": "application/json",
+          "Access-Control-Allow-Origin": "https://returnedmath.xyz",
+          "Access-Control-Allow-Credentials": "true"
         });
+
+        const cookie = `user_id=${value.email}; Domain=.returnedmath.xyz; Path=/; HttpOnly; Secure; SameSite=Strict; Max-Age=604800`;
+        headers.append("Set-Cookie", cookie);
+
+        return new Response(JSON.stringify({
+          message: "success",
+          user: { email: value.email }
+        }), { headers });
       }
     }).fetch(request, env, ctx);
   }
